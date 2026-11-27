@@ -21,8 +21,6 @@ Code:
 
 Launcher defaults changed in `scripts\play-3070.ps1`:
 - `VICTORY_REFRESH_ONCE=0` (with 1: stretched meshes and corrupted posters).
-- `VICTORY_SAMPLERS_MADE=0`: pipelines with static samplers stay in the saved library, so a second start loads
-  them instead of compiling ~1,100 again. If colour grading looks banded, set it back to 1.
 - `VICTORY_LEAVE_OUT` also names `5dc3b25986622949` and `6f225b641c5b0708`, the water's two tiled light programs,
   which leave dark tiles and black foam on open water on NVIDIA cards (found in trustno1-coder/VIctory-NVIDIA
   `35c1560`). The water is a little darker and bluer without them; remove the two hashes to get them back.
