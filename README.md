@@ -55,6 +55,7 @@ Add these to the start command.
 | Option | What it does |
 |---|---|
 | `-Console series-x` | Runs the title as an Xbox Series X: better picture, more work for the card. The default is Series S. The optimisations work in both; on a higher-end GPU choose Series X. |
+| `-Res 1920x1080` | The size the title draws for. Default `auto`: your monitor's (the nearest of 3840x2160, 2560x1440, 1920x1080, 1280x720 not above it), so a 1080p screen is not drawn for at 4K. The title draws at 2/3 of it inside (1280x720 for 1080p on Series X). `-Res console` keeps the console's own 4K, the most work for the card. Output-size patch from [LooperSalty/AnyXboxX](https://github.com/LooperSalty/AnyXboxX). |
 | `-ProbeRays` | Lights the scene with the title's own light probes instead of the estimate. Brighter, more natural shade and nights; costs a few milliseconds a frame on the card. |
 | `-MipDrop 0` | Full texture detail. The default (`1`) drops the top level of large textures to fit 8 GB cards; use `0` with 12 GB or more. |
 | `-RayTracing` | The title's own ray tracing. Best light, much slower. |

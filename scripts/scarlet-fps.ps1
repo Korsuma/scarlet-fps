@@ -1,6 +1,10 @@
 param(
     [Parameter(Mandatory)][string]$Game,
     [ValidateSet('series-s', 'series-x')][string]$Console = 'series-s',
+    # The size the title draws for: 'auto' (the default) your monitor's, as the nearest of 3840x2160,
+    # 2560x1440, 1920x1080 or 1280x720 not above it; 'console' the console's own 4K (the most work for the
+    # card: 2560x1440 inside on Series X); or one of those sizes. The title draws at 2/3 of it inside.
+    [ValidatePattern('^(auto|console|\d{3,5}x\d{3,5})$')][string]$Res = 'auto',
     [ValidateRange(0, 3)][int]$MipDrop = 1,
     [int]$CardBuffersMB = 1024,
     [int]$CardWindowsMB = 512,
@@ -139,6 +143,50 @@ if ($ProbeRays -and -not $RayTracing) {
     $set.VICTORY_AMBIENT = '0.8'
     $set.VICTORY_AMBIENT_AIR = '1.5'
     $set.VICTORY_AMBIENT_SPECULAR = '1'   # reflections stand-in (from trustno1-coder/VIctory-NVIDIA)
+}
+# The display reported to the title (-Res): by default the monitor's, so a 1080p screen is not drawn for at 4K.
+$display = $Res
+if ($display -eq 'auto') {
+    $display = ''
+    $height = 0
+    try {
+        Add-Type -Namespace ScarletFps -Name Display -MemberDefinition @'
+[System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential, CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public struct DEVMODE {
+    [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+    public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra;
+    public int dmFields, dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+    public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+    [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+    public short dmLogPixels;
+    public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency;
+}
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+public static extern bool EnumDisplaySettings(string name, int mode, ref DEVMODE dm);
+'@
+        $dm = New-Object 'ScarletFps.Display+DEVMODE'
+        $dm.dmSize = [System.Runtime.InteropServices.Marshal]::SizeOf($dm)
+        # -1: the primary monitor's current mode, in real pixels (not scaled by Windows' text size).
+        if ([ScarletFps.Display]::EnumDisplaySettings($null, -1, [ref]$dm)) { $height = $dm.dmPelsHeight }
+    } catch {}
+    if ($height -le 0) {
+        try { $height = (Get-CimInstance Win32_VideoController | Measure-Object CurrentVerticalResolution -Maximum).Maximum } catch {}
+    }
+    if ($height -ge 2160) { $display = '3840x2160' }
+    elseif ($height -ge 1440) { $display = '2560x1440' }
+    elseif ($height -ge 1080) { $display = '1920x1080' }
+    elseif ($height -gt 0) { $display = '1280x720' }
+    if ($display) { Write-Host "Display reported to the title: $display (your monitor; -Res to change)" }
+} elseif ($display -eq 'console') {
+    $display = ''
+}
+if ($display) {
+    $set.VICTORY_DISPLAY_MODE = $display
+    # The output size the title draws for (VICTORY_OUTPUT, its own settings patched at load): the display mode
+    # alone changes nothing, the title keeps its 4K output (2560x1440 inside on Series X). Only the title's
+    # own modes take.
+    if ($display -in '1280x720', '1664x936', '1920x1080', '2560x1440', '3840x2160') { $set.VICTORY_OUTPUT = $display }
+    else { Write-Host "-Res $display is not one of the title's own sizes: only the display mode is changed" -ForegroundColor Yellow }
 }
 if ($RayTracing) { $set.VICTORY_BVH_BUILDER = '1' }
 if ($AutoA -gt 0) { $set.VICTORY_AUTO_A = "$AutoA" }
