@@ -11,10 +11,11 @@ use windows::core::{PCSTR, s};
 use crate::host::Host;
 
 const SOURCE: &str = r#"
-#define RS "DescriptorTable(SRV(t0, numDescriptors=2), visibility=SHADER_VISIBILITY_PIXEL), StaticSampler(s0, filter=FILTER_MIN_MAG_MIP_LINEAR, addressU=TEXTURE_ADDRESS_CLAMP, addressV=TEXTURE_ADDRESS_CLAMP)"
+#define RS "DescriptorTable(SRV(t0, numDescriptors=2), visibility=SHADER_VISIBILITY_PIXEL), RootConstants(num32BitConstants=1, b0, visibility=SHADER_VISIBILITY_PIXEL), StaticSampler(s0, filter=FILTER_MIN_MAG_MIP_LINEAR, addressU=TEXTURE_ADDRESS_CLAMP, addressV=TEXTURE_ADDRESS_CLAMP)"
 Texture2D<float4> scene : register(t0);
 Texture2D<float4> over : register(t1);
 SamplerState smooth_ : register(s0);
+cbuffer CasParams : register(b0) { float cas_sharpness; };
 struct V { float4 at : SV_Position; float2 uv : TEXCOORD0; };
 [RootSignature(RS)]
 V vs(uint id : SV_VertexID) {
@@ -26,10 +27,39 @@ V vs(uint id : SV_VertexID) {
 [RootSignature(RS)]
 float4 ps(V v) : SV_Target {
     float4 s = scene.SampleLevel(smooth_, v.uv, 0);
+    if (cas_sharpness > 0.001) {
+        uint sw, sh;
+        scene.GetDimensions(sw, sh);
+        float2 inv = 1.0 / float2(max(sw, 1u), max(sh, 1u));
+        float3 e = s.rgb;
+        float3 b = scene.SampleLevel(smooth_, v.uv + float2(0.0, -inv.y), 0).rgb;
+        float3 d = scene.SampleLevel(smooth_, v.uv + float2(-inv.x, 0.0), 0).rgb;
+        float3 f = scene.SampleLevel(smooth_, v.uv + float2(inv.x, 0.0), 0).rgb;
+        float3 h = scene.SampleLevel(smooth_, v.uv + float2(0.0, inv.y), 0).rgb;
+        float3 mn = min(min(min(d, e), min(f, b)), h);
+        float3 mx = max(max(max(d, e), max(f, b)), h);
+        float3 amp = sqrt(saturate(min(mn, 1.0 - mx) / max(mx, 1e-5)));
+        float peak = -1.0 / lerp(8.0, 5.0, saturate(cas_sharpness));
+        float3 w = amp * peak;
+        s.rgb = saturate((e + (b + d + f + h) * w) / (1.0 + 4.0 * w));
+    }
     float4 o = over.SampleLevel(smooth_, v.uv, 0);
     return float4(saturate(o.rgb + s.rgb * (1 - saturate(o.a))), 1);
 }
 "#;
+
+/// `VICTORY_CAS=<0.0..1.0>` (0 by default): AMD FidelityFX Contrast Adaptive
+/// Sharpening strength applied to the game plane before UI compositing.
+fn cas_strength() -> f32 {
+    static STRENGTH: std::sync::OnceLock<f32> = std::sync::OnceLock::new();
+    *STRENGTH.get_or_init(|| {
+        std::env::var("VICTORY_CAS")
+            .ok()
+            .and_then(|v| v.trim().parse::<f32>().ok())
+            .filter(|v| v.is_finite() && *v > 0.0)
+            .map_or(0.0, |v| v.clamp(0.0, 1.0))
+    })
+}
 
 pub(crate) struct Composer {
     root: ID3D12RootSignature,
@@ -169,6 +199,7 @@ impl Composer {
             list.SetGraphicsRootSignature(&self.root);
             list.SetPipelineState(&self.pso);
             list.SetGraphicsRootDescriptorTable(0, gpu);
+            list.SetGraphicsRoot32BitConstant(1, cas_strength().to_bits(), 0);
             list.IASetPrimitiveTopology(
                 windows::Win32::Graphics::Direct3D::D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST,
             );
