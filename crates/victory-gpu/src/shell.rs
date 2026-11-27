@@ -136,7 +136,7 @@ pub fn caption(name: &str, fps: f64, draws: f64) -> String {
     } else {
         format!(" | {name}")
     };
-    format!("Scarlett{game} | {fps:.1} FPS | {ms} ms | {draws:.0} draws")
+    format!("Scarlet-FPS{game} | {fps:.1} FPS | {ms} ms | {draws:.0} draws")
 }
 
 /// The game's name in a window's text: the text itself, but for a
@@ -144,7 +144,7 @@ pub fn caption(name: &str, fps: f64, draws: f64) -> String {
 /// presenter made before, read again by a new one), whose game field it
 /// is (none: empty).
 pub fn game_in_caption(text: &str) -> &str {
-    let Some(rest) = text.strip_prefix("Scarlett") else {
+    let Some(rest) = text.strip_prefix("Scarlet-FPS") else {
         return text;
     };
     rest.strip_prefix(" | ")
@@ -188,7 +188,7 @@ pub fn present_maybe<R>(do_not_wait: u32, present: impl FnOnce(u32) -> R) -> Opt
 }
 
 /// The caption text for the window, from what the window said when first
-/// read (`first`, the title's caption): `Scarlett | <game> | F FPS | M ms |
+/// read (`first`, the title's caption): `Scarlet-FPS | <game> | F FPS | M ms |
 /// D draws`, the game's name from the manifest, else from `first`. The
 /// form our scripts parse (fields split at `|`).
 pub fn caption_for(first: &[u16], fps: f64, draws: f64) -> String {
@@ -445,25 +445,25 @@ mod tests {
     fn the_caption_says_frame_rate_and_time_per_frame() {
         assert_eq!(
             caption("Grand Theft Auto VI", 8.9, 4225.4),
-            "Scarlett | Grand Theft Auto VI | 8.9 FPS | 112.4 ms | 4225 draws"
+            "Scarlet-FPS | Grand Theft Auto VI | 8.9 FPS | 112.4 ms | 4225 draws"
         );
         assert_eq!(
             caption("Americas", 25.0, 10.0),
-            "Scarlett | Americas | 25.0 FPS | 40.0 ms | 10 draws"
+            "Scarlet-FPS | Americas | 25.0 FPS | 40.0 ms | 10 draws"
         );
         // No frame presented in the interval.
         assert_eq!(
             caption("Americas", 0.0, 0.0),
-            "Scarlett | Americas | 0.0 FPS | – ms | 0 draws"
+            "Scarlet-FPS | Americas | 0.0 FPS | – ms | 0 draws"
         );
         // No name: the field is left out.
         assert_eq!(
             caption("", 30.0, 1.0),
-            "Scarlett | 30.0 FPS | 33.3 ms | 1 draws"
+            "Scarlet-FPS | 30.0 FPS | 33.3 ms | 1 draws"
         );
         // The name in a window's text, also in a caption of ours.
         assert_eq!(game_in_caption("Americas"), "Americas");
-        assert_eq!(game_in_caption("Scarlett"), "");
+        assert_eq!(game_in_caption("Scarlet-FPS"), "");
         assert_eq!(game_in_caption(&caption("Americas", 9.0, 1.0)), "Americas");
         assert_eq!(game_in_caption(&caption("", 9.0, 1.0)), "");
     }

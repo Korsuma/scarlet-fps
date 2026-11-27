@@ -10405,7 +10405,7 @@ impl Meter {
             self.caption = Some(buffer);
         }
         let Some(caption) = &self.caption else { return };
-        // (Fox port A) Our scripts' caption: "Scarlett | <game> | F FPS | M ms
+        // (Fox port A) Our scripts' caption: "Scarlet-FPS |<game> | F FPS | M ms
         // | D draws" (fields split at '|'; run-auto/input-check/run-compare).
         let _ = ms;
         let mut text = crate::shell::caption_for(caption, fps, draws);
