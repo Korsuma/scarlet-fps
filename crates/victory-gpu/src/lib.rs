@@ -95,6 +95,10 @@ mod stalecheck;
 mod nanmeter;
 #[cfg(windows)]
 mod tiles;
+// From Neptune/our fps fork (`VICTORY_TILED`): the tiled card image of the title's private
+// graphics memory (pub: `victory-hle` xmem tells it the reservations).
+#[cfg(windows)]
+pub mod tiled;
 pub mod signature;
 mod switch;
 #[cfg(all(windows, feature = "diagnostics"))]

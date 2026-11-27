@@ -81,3 +81,7 @@ Thumbs.db
 game-folder.txt
 /runs/
 /run.log
+
+# Local run logs and profiles
+/run-*.log
+/prof-*.txt

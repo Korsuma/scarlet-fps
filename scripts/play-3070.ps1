@@ -7,7 +7,9 @@ param(
     [switch]$Hooks,
     [switch]$ProbeRays,
     [switch]$RayTracing,
-    [switch]$Prewarm
+    [switch]$Prewarm,
+    # Seconds after the start during which A is pressed by itself (0: off).
+    [int]$AutoA = 0
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -51,12 +53,13 @@ $set = [ordered]@{
     # Scarlett CPU submit & upload wins (+ 3050 Nsight A/B tweaks)
     VICTORY_WAIT_RESIDENT        = '0'
     VICTORY_JOIN_COPIES          = '0'
-    VICTORY_REFRESH_ONCE         = '1'
+    VICTORY_REFRESH_ONCE         = '0'   # merged build: 1 stretched meshes and corrupted posters
     VICTORY_CARD_REHASH_RUNS     = '1'
     VICTORY_BACK_OWN_VIEW        = '1'
     VICTORY_WIDE_MERGE           = '1'
     VICTORY_MIRROR_FAST          = '1'
     VICTORY_PIPELINE_WAIT_MS     = '20'
+    VICTORY_NO_WATCHDOG          = '1'   # LOCAL: the title's own watchdog does not end a long frame
     VICTORY_ASYNC_SUBMIT         = '1'
     VICTORY_QUEUE2               = '1'
     VICTORY_INDIRECT_WINDOW      = '1'
@@ -91,7 +94,7 @@ $set = [ordered]@{
     VICTORY_BAKE_TEXTURES_MS     = '10000'
     VICTORY_HEAP_PASS_MAX        = '0'
     VICTORY_HEAP_CHANGED_MAX     = '0'
-    VICTORY_LEAVE_OUT            = '02384a60fda6f2d0'
+    VICTORY_LEAVE_OUT            = '02384a60fda6f2d0,5dc3b25986622949,6f225b641c5b0708'   # + the two water light programs (dark water tiles on NVIDIA)
     VICTORY_WC_NO_BACK           = '1'
     VICTORY_WC_NO_BACK_MIN_KB    = '1024'
     VICTORY_SYNC_IN_PLACE        = '1'
@@ -100,11 +103,16 @@ $set = [ordered]@{
     VICTORY_HEAP_SYNC_FIRST      = '1'
     VICTORY_HEAP_SYNC_AT_SUBMIT  = '1'
     VICTORY_SOFT_VIEWS           = 'copies'
-    VICTORY_SAMPLERS_MADE        = '1'
+    VICTORY_SAMPLERS_MADE        = '0'   # merged build: pipelines with static samplers stay in the saved library (no recompiling at every start)
     VICTORY_TABLE_NAMED_ONLY     = '1'
     VICTORY_QUEUE_MARKS          = '1'
     VICTORY_PORT_CONSTANTS       = '1'
     VICTORY_EARLY_DEPTH          = '1'
+
+    # Merged build (scarlett 80 ms changes on this fork)
+    VICTORY_COPY_BESIDE          = '1'
+    VICTORY_STORE_BESIDE         = '1'
+    VICTORY_GPU_BACK_MAX_KB      = '1024'
 }
 if ($Hooks) {
     $set.VICTORY_GPU_ONLY = '1'
@@ -118,6 +126,7 @@ if ($ProbeRays -and -not $RayTracing) {
     $set.VICTORY_AMBIENT_AIR = '1.5'
 }
 if ($RayTracing) { $set.VICTORY_BVH_BUILDER = '1' }
+if ($AutoA -gt 0) { $set.VICTORY_AUTO_A = "$AutoA" }
 
 foreach ($k in $set.Keys) { Set-Item -Path "Env:$k" -Value $set[$k] }
 

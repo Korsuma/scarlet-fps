@@ -1,3 +1,46 @@
+# victory-scarlett-3070, merged build
+
+[Yaekai/victory-scarlett-3070](https://github.com/Yaekai/victory-scarlett-3070) (`b4e351c`) with the copy-path
+changes of our scarlett build merged in, and our measured settings as the launcher's defaults. Install and run
+exactly as the 3070 fork (see "Build and Run" below): same commands, same `scripts\play-3070.ps1`.
+
+**This repository contains no game files, code, or assets.** Licensed GPL-3.0-or-later, as the fork it is based on.
+
+## What this adds on top of the 3070 fork
+
+Measured on an EPYC 7543P VM (4 cores / 8 threads), RTX A4500 20 GB, Series S mode, standing at spawn, release
+build: frame 85 ms -> 78 ms, the submitting thread's preparing 64 -> 58 ms, copy-back 21 MB -> 0.6 MB a frame.
+
+Code:
+- Copy-back limit (`VICTORY_GPU_BACK_MAX_KB`, `host.rs`): shader-written buffers above the limit stay on the card.
+- Title writes beside the write guards (`VICTORY_COPY_BESIDE`, `VICTORY_STORE_BESIDE`): fewer write faults.
+- Tiled image of title memory (`VICTORY_TILED`, `tiled.rs`), quiet asking (`VICTORY_ASK_QUIET`), views known as
+  such (`VICTORY_VIEW_KNOWN`), guards made read-only several runs at a call (`VICTORY_ARM_SPAN`): all off unless set.
+- Window title says `COMPILING SHADERS (n left)` while pipelines are being made and `WARMED UP` once none are.
+- `-AutoA <seconds>` on the launcher (`VICTORY_AUTO_A`): presses A through the start screens.
+
+Launcher defaults changed in `scripts\play-3070.ps1`:
+- `VICTORY_REFRESH_ONCE=0` (with 1: stretched meshes and corrupted posters).
+- `VICTORY_SAMPLERS_MADE=0`: pipelines with static samplers stay in the saved library, so a second start loads
+  them instead of compiling ~1,100 again. If colour grading looks banded, set it back to 1.
+- `VICTORY_LEAVE_OUT` also names `5dc3b25986622949` and `6f225b641c5b0708`, the water's two tiled light programs,
+  which leave dark tiles and black foam on open water on NVIDIA cards (found in trustno1-coder/VIctory-NVIDIA
+  `35c1560`). The water is a little darker and bluer without them; remove the two hashes to get them back.
+- `VICTORY_COPY_BESIDE=1`, `VICTORY_STORE_BESIDE=1`, `VICTORY_GPU_BACK_MAX_KB=1024`.
+
+## Series S or Series X
+
+The launcher starts the title as an Xbox Series S by default, as the 3070 fork does. The optimisations in this build
+work in both modes. On a higher-end GPU choose Series X for the better picture:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\play-3070.ps1 -Console series-x -Game "C:\path\to\game_scarlett_master.exe"
+```
+
+The 3070 fork's README follows.
+
+---
+
 # victory-scarlett-3070 (8 GB NVIDIA / RTX 3070 Fork)
 
 A fork of [Op-lite/victory-scarlett](https://github.com/Op-lite/victory-scarlett) (itself based on

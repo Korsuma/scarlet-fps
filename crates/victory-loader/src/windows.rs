@@ -84,6 +84,12 @@ pub fn load(prepared: &PreparedImage, dir: &Path) -> Result<LoadedImage> {
         // SAFETY: just mapped, and no title code has run.
         unsafe { crate::tls::redirect(loaded.base(), &loaded.info) }?;
     }
+    // LOCAL: VICTORY_NO_WATCHDOG (crate::watchdog), off unless set.
+    if crate::watchdog::wanted() {
+        // SAFETY: just mapped, and no title code has run.
+        let applied = unsafe { crate::watchdog::disarm(loaded.base(), &prepared.original_hash) };
+        tracing::info!(applied, "title watchdog patches ({})", crate::watchdog::NO_WATCHDOG_ENV);
+    }
     tracing::info!(
         base = format_args!("{:#x}", loaded.base()),
         preferred = format_args!("{:#x}", loaded.info.image_base),

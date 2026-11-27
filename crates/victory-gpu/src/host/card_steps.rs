@@ -432,7 +432,9 @@ fn holder(writers: &[Writer], from: usize, to: usize) -> Result<Arc<Shadow>, &'s
         None => crate::shadow::find(from as u64, (to - from) as u64).ok_or("no host copy of it")?,
     };
     let (start, len) = shadow.span();
-    if shadow.in_place() || (from as u64) < start || to as u64 > start + len {
+    // (From Neptune/our fps fork, `VICTORY_TILED`: nor on the tiled image, which has no CPU
+    // side for a step to take: it waits as for memory in place.)
+    if shadow.in_place() || shadow.tiled() || (from as u64) < start || to as u64 > start + len {
         return Err("no host copy holds all of it");
     }
     Ok(shadow)

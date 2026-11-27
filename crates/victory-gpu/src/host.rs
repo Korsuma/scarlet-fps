@@ -2572,6 +2572,10 @@ struct Deferred {
     /// indirect arguments; 0 if none. It stays readable until the next
     /// clamp into it ([`HostList::indirect_state`]).
     indirect_readable: usize,
+    /// From Neptune/our fps fork (`VICTORY_TILED`): title ranges (address, bytes) of the
+    /// tiled image the list's commands use: what the image brings up to date at submission
+    /// (`crate::tiled`).
+    tiled: Vec<(usize, usize)>,
 }
 
 impl Deferred {
@@ -3422,7 +3426,16 @@ fn stale_under_flights(runs: &[&HostList]) -> Vec<(std::sync::Arc<crate::shadow:
         // copy of its own there. With [`card_steps`] the pages of the
         // title's ring of constants come here too, which were waited for
         // before: hundreds of short runs each, at about 1.5 us a run.
-        let mut runs_left = if card_steps::stage() > 0 { 4096 } else { 512 };
+        // From Neptune/our fps fork: `VICTORY_UNDER_WRITES_RUNS=<n>` (or our build's
+        // `VICTORY_MERGE_RUNS`, clamped 1-65,536; Neptune's name wins) raises the cap (unset:
+        // as before). Neptune's first scene changes 26,000-33,000 such runs a frame, and the
+        // submitting thread stood 64-73 ms a frame in the settles the cap made.
+        static RUNS: OnceLock<Option<usize>> = OnceLock::new();
+        let asked = *RUNS.get_or_init(|| {
+            let of = |name: &str| std::env::var(name).ok().and_then(|v| v.trim().parse::<usize>().ok());
+            of("VICTORY_UNDER_WRITES_RUNS").or_else(|| of("VICTORY_MERGE_RUNS").map(|n| n.clamp(1, 1 << 16)))
+        });
+        let mut runs_left = asked.unwrap_or(if card_steps::stage() > 0 { 4096 } else { 512 });
         spans.retain(|(shadow, from, to)| shadow.merge_under_writes(*from, *to - *from, &mut runs_left));
         return spans;
     }
@@ -3867,6 +3880,7 @@ struct RelayBack {
 }
 
 fn relay_hand_back(back: &[Declared]) -> RelayBack {
+    crate::tiled::hand_back(); // From Neptune/our fps fork (VICTORY_TILED)
     let mut work: Vec<(std::sync::Arc<crate::shadow::Shadow>, usize, usize)> = Vec::new();
     for (shadow, declared) in back {
         if shadow.carded() {
@@ -4185,6 +4199,29 @@ fn declare_once() -> bool {
     *ON.get_or_init(|| std::env::var("VICTORY_DECLARE_ONCE").map_or(true, |v| v != "0"))
 }
 
+/// From Neptune/our fps fork (`VICTORY_TILED`): the ranges of the tiled image the lists use,
+/// as (start, end), sorted and joined.
+fn tiled_uses(runs: &[&HostList]) -> Vec<(usize, usize)> {
+    let mut all: Vec<(usize, usize)> = Vec::new();
+    for list in runs {
+        all.extend(list.deferred().tiled.iter().map(|&(a, n)| (a, a + n)));
+    }
+    let mut out = Vec::with_capacity(all.len());
+    join_ranges(&mut out, all);
+    out
+}
+
+/// From Neptune/our fps fork (`VICTORY_TILED`): the ranges (address, bytes) the lists'
+/// shaders may write in the tiled image, as declared, and through views they pick.
+fn tiled_writes(declared: &[Declared], picked: &crate::picked::Ranges) -> Vec<(usize, usize)> {
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    for (_, ranges) in declared.iter().filter(|(s, _)| s.tiled()) {
+        out.extend(ranges.iter().map(|&(a, e)| (a, e - a)));
+    }
+    out.extend(picked.written.iter().filter(|(s, ..)| s.tiled()).map(|&(_, a, n)| (a, n)));
+    out
+}
+
 /// The ranges the shaders of `runs` may write, per host copy, as declared.
 /// One list's lock at a time: a submission may name a list twice.
 fn declared_writes(runs: &[&HostList]) -> Vec<Declared> {
@@ -4271,6 +4308,7 @@ fn read_backs(list: &HostList) {
 /// After the card ran what declared `back`: what shaders wrote there goes
 /// into title memory, and the ranges are done with.
 fn hand_back(back: &[Declared]) {
+    crate::tiled::hand_back(); // From Neptune/our fps fork (VICTORY_TILED)
     if crate::shadow::wide_back() {
         // Every range first (the pieces that differ, found on several
         // threads), then the merges, in order, as below.
@@ -6157,6 +6195,19 @@ impl Host {
         if let Some(check) = card.as_ref().and_then(|c| c.check.clone()) {
             lists.push(Some(check));
         }
+        // From Neptune/our fps fork (`VICTORY_TILED`): the image brought up to date (the queue
+        // waits for it on the card), and the compare of what the lists' shaders write in it
+        // around them. (The first run's group keeps the list in front: `firsts[0]` stays.)
+        if crate::tiled::on()
+            && let Some((pre, check)) =
+                crate::tiled::before_execute(&self.queue, (&self.fence, *submitted), &tiled_uses(runs), &tiled_writes(&declared, &picked))
+        {
+            lists.insert(0, Some(pre));
+            for first in firsts.iter_mut().skip(1) {
+                *first += 1;
+            }
+            lists.push(Some(check));
+        }
         #[cfg(feature = "diagnostics")]
         split.part(4);
         stage.next("submit: waiting for the heaps' records");
@@ -6195,6 +6246,7 @@ impl Host {
                     self.queue.ExecuteCommandLists(&lists[from..to]);
                     from = to;
                 }
+                crate::tiled::after_execute(&self.queue); // From Neptune/our fps fork (VICTORY_TILED)
                 self.queue.Signal(&self.fence, *submitted)
             };
             awake::sent(&self.device);
@@ -6248,6 +6300,9 @@ impl Host {
             // SAFETY: closed lists; the fence and event are ours.
             unsafe {
                 self.queue.ExecuteCommandLists(group);
+                if i + 1 == groups.len() {
+                    crate::tiled::after_execute(&self.queue); // From Neptune/our fps fork (VICTORY_TILED)
+                }
                 self.card_sent();
                 let waited = self
                     .queue
@@ -7492,6 +7547,20 @@ impl HostList {
     ) {
         let mut deferred = self.deferred();
         let key = (std::sync::Arc::as_ptr(shadow) as usize, address, len);
+        // Local (`VICTORY_GPU_BACK_MAX_KB=n`, from the victory-fps build; unset: every range, as
+        // before): a range over n KiB is not copied back and nothing waits for it; 0 copies
+        // none. What shaders write there stays on the card.
+        static MOST: OnceLock<Option<usize>> = OnceLock::new();
+        let most = *MOST.get_or_init(|| {
+            let most = std::env::var("VICTORY_GPU_BACK_MAX_KB").ok().and_then(|v| v.trim().parse::<usize>().ok());
+            if let Some(kb) = most {
+                tracing::info!("shader writes of ranges over {kb} KiB are not copied back into title memory (VICTORY_GPU_BACK_MAX_KB)");
+            }
+            most.map(|kb| kb << 10)
+        });
+        if most.is_some_and(|most| len > most || most == 0) {
+            return;
+        }
         if deferred.gpu_written.insert(key) || !declare_once() {
             deferred.copies.push(Step::GpuWrite(shadow.clone(), address, len));
         }
@@ -7814,6 +7883,16 @@ impl HostList {
     /// about `key` (a texture to bring up to date).
     pub(crate) fn first_use(&self, key: usize) -> bool {
         self.deferred().textures.insert(key)
+    }
+
+    /// From Neptune/our fps fork (`VICTORY_TILED`): the list's commands use `[address,
+    /// address + len)` of the tiled image (`crate::tiled::before_execute` brings it up to
+    /// date).
+    pub(crate) fn defer_tiled_use(&self, address: usize, len: usize) {
+        let mut deferred = self.deferred();
+        if deferred.tiled.last() != Some(&(address, len)) {
+            deferred.tiled.push((address, len));
+        }
     }
 
     /// (fxceless 19a45d1) Whether `source` is not the last card-written
@@ -8166,6 +8245,7 @@ fn split_line(frames: f64) {
         h[2],
         aside::WAITED.swap(0, Ordering::Relaxed) as f64 / 1e3 / frames,
     );
+    crate::watch::ported_line(frames); // From Neptune/our fps fork (VICTORY_ASK_QUIET, VICTORY_VIEW_KNOWN)
 }
 
 /// Whether a submission's refreshes of host copies run on several threads,
@@ -8387,6 +8467,11 @@ pub(crate) static KEPT_EARLY: std::sync::atomic::AtomicU64 = std::sync::atomic::
 /// 1.8 ms a frame); ours went wide earlier: fills from 32 (fox 96) and a
 /// flush's refreshes from 2 copies (fox 4). Only those two thresholds.
 fn prepare_wide() -> bool {
+    // (`VICTORY_AB` naming it: on and off, in turn.)
+    #[cfg(feature = "diagnostics")]
+    if let Some(on) = crate::ab::pick("VICTORY_PREPARE_WIDE") {
+        return on;
+    }
     static ON: OnceLock<bool> = OnceLock::new();
     *ON.get_or_init(|| std::env::var_os("VICTORY_PREPARE_WIDE").is_some_and(|v| v == "1"))
 }
@@ -10323,7 +10408,18 @@ impl Meter {
         // (Fox port A) Our scripts' caption: "Scarlett | <game> | F FPS | M ms
         // | D draws" (fields split at '|'; run-auto/input-check/run-compare).
         let _ = ms;
-        let text = crate::shell::caption_for(caption, fps, draws);
+        let mut text = crate::shell::caption_for(caption, fps, draws);
+        // Local: while host pipelines are still being made the caption says so, with how many
+        // are queued: frame times and the picture are not to be judged until it is gone.
+        // (A field of its own at the end: the scripts' fields before it stay where they are.)
+        // And when none is queued, that it is warmed up (once the world draws: a start screen
+        // with nothing queued yet is not).
+        let making = crate::pipeline::making();
+        if making > 0 {
+            text.push_str(&format!(" | COMPILING SHADERS ({making} left)"));
+        } else if draws >= 1000.0 {
+            text.push_str(" | WARMED UP");
+        }
         let mut text: Vec<u16> = text.encode_utf16().collect();
         text.push(0);
         // Setting the text waits for the window's thread (a title thread,

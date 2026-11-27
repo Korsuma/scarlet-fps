@@ -1670,7 +1670,8 @@ mod host {
             }
             // The auto press likewise reaches a real first pad, which hides
             // the stand-in.
-            if slot == 0 {
+            // (Local: every connected pad; this PC's is not the first.)
+            {
                 pad.buttons |= super::auto_buttons();
             }
             Some(pad)

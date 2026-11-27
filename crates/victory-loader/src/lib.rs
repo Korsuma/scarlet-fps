@@ -44,6 +44,9 @@ mod tls;
 pub mod write_sites;
 #[cfg(windows)]
 mod windows;
+// LOCAL: VICTORY_NO_WATCHDOG (from victory-nvidia-megafork, GPL-3.0-or-later).
+#[cfg(windows)]
+mod watchdog;
 
 #[cfg(windows)]
 pub use crash::{

@@ -191,6 +191,11 @@ pub extern "system" fn XMemVirtualAlloc(
             "XMemVirtualAlloc"
         );
     }
+    // From Neptune/our fps fork (`VICTORY_TILED`; nothing without it): a write-watched
+    // reservation of the title's is a stretch of the tiled image.
+    if base.is_null() && !at.is_null() && kind & MEM_RESERVE_PLACEHOLDER == 0 {
+        victory_gpu::tiled::reserved(at as usize, size);
+    }
     if !at.is_null() && !placeholder {
         victory_gpu::title_memory_allocated(at as usize, size);
     }

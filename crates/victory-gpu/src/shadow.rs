@@ -111,6 +111,10 @@ pub(crate) struct Shadow {
     /// and the bytes from the buffer's first byte to `start` (the heap
     /// begins on a 64 KiB line; a title buffer need not).
     place: Option<(windows::Win32::Graphics::Direct3D12::ID3D12Heap, u64)>,
+    /// From Neptune/our fps fork (`VICTORY_TILED`): not a copy either. `buffer` is a stretch
+    /// of the tiled image (`crate::tiled`) and this is `start`'s offset in it; uploads,
+    /// compares and read-backs are the image's.
+    tiled: Option<u64>,
 }
 
 /// What a copy in the card's memory ([`cards`]) has beside the buffer
@@ -692,7 +696,7 @@ pub(crate) fn stale_pages(most: usize, say: &mut dyn FnMut(&Shadow, usize, usize
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let mut all: Vec<Arc<Shadow>> = buffers_read().values().filter_map(|e| e.shadow.clone()).collect();
     all.extend(LOOSE.write().unwrap_or_else(|e| e.into_inner()).values().cloned());
-    all.retain(|s| s.place.is_none() && s.watched.load(Ordering::Relaxed) == 1);
+    all.retain(|s| s.place.is_none() && s.tiled.is_none() && s.watched.load(Ordering::Relaxed) == 1);
     all.sort_by_key(|s| s.id);
     let next = NEXT.load(Ordering::Relaxed);
     let turn = all.partition_point(|s| s.id < next);
@@ -2801,6 +2805,11 @@ impl Drop for Shadow {
             crate::inplace::gone(self.window, self.len);
             return;
         }
+        if self.tiled.is_some() {
+            // From Neptune/our fps fork (`VICTORY_TILED`): never counted with the copies
+            // (`Shadow::tiled_image`).
+            return;
+        }
         LIVE[0].fetch_sub(1, Ordering::Relaxed);
         LIVE[1].fetch_sub(self.len, Ordering::Relaxed);
         if self.kept.get_mut().unwrap_or_else(|e| e.into_inner()).1 {
@@ -3440,7 +3449,25 @@ impl Shadow {
 
     /// Offset of a title address from the buffer's start.
     pub(crate) fn offset(&self, address: u64) -> u64 {
-        address - self.start + self.place.as_ref().map_or(0, |place| place.1)
+        address - self.start + self.place.as_ref().map_or(0, |place| place.1) + self.tiled.unwrap_or(0)
+    }
+
+    /// From Neptune/our fps fork (`VICTORY_TILED`): title memory `[start, start + len)` on
+    /// the tiled image. Shaped as a copy, as [`Shadow::placed`] is: binding, views and keeping
+    /// work unchanged; refreshes and copy-backs are the image's (`crate::tiled`).
+    fn tiled_image(placed: crate::tiled::Placed, start: u64, len: u64, window: bool) -> Shadow {
+        let mut shadow = Shadow::new(placed.buffer, start as *mut u8, placed.gpu, start, len);
+        LIVE[0].fetch_sub(1, Ordering::Relaxed);
+        LIVE[1].fetch_sub(len, Ordering::Relaxed);
+        shadow.window = window;
+        shadow.tiled = Some(placed.bias);
+        shadow
+    }
+
+    /// From Neptune/our fps fork (`VICTORY_TILED`): whether this is a use of the tiled image,
+    /// not a copy.
+    pub(crate) fn tiled(&self) -> bool {
+        self.tiled.is_some()
     }
 
     /// Title memory `[start, start + len)` in place: `placed` is a buffer
@@ -3463,6 +3490,18 @@ impl Shadow {
     /// Brings `len` bytes at `address` up to date when `list` is submitted,
     /// and keeps the copy alive until the list is reset.
     pub(crate) fn refresh(self: &Arc<Self>, list: &HostList, address: u64, len: u64) {
+        // From Neptune/our fps fork (`VICTORY_TILED`): the image is brought up to date at
+        // submission for what the lists use; the list only keeps the buffer (once).
+        if self.tiled.is_some() {
+            if list.first_use(Arc::as_ptr(self) as usize | 1) {
+                list.keep(&self.buffer);
+            }
+            let (from, to) = (address.max(self.start), (address + len.max(1)).min(self.start + self.len));
+            if from < to {
+                list.defer_tiled_use(from as usize, (to - from) as usize);
+            }
+            return;
+        }
         let len = len.min(self.start + self.len - address);
         list.defer_refresh(self, address as usize, len as usize);
     }
@@ -3510,6 +3549,7 @@ impl Shadow {
             wc: AtomicU8::new(0),
             mapped: false,
             place: None,
+            tiled: None,
         }
     }
 
@@ -3603,8 +3643,9 @@ impl Shadow {
         }
         // In the card's memory: no snapshot. What shaders wrote is found on
         // the card (`Host::card_before` reads the declared ranges from the
-        // lists).
-        if self.card.is_some() {
+        // lists). (From Neptune/our fps fork, `VICTORY_TILED`: on the tiled
+        // image too, whose compare finds them.)
+        if self.card.is_some() || self.tiled.is_some() {
             pending.push(range);
             return;
         }
@@ -3705,7 +3746,8 @@ impl Shadow {
     /// [`Shadow::copy_back`]; `found`, if given, is the pieces of the range
     /// that differ from the snapshot, found beforehand ([`find_all`]).
     pub(crate) fn copy_back_with(&self, address: usize, len: usize, found: Option<Vec<(usize, usize)>>) -> usize {
-        if self.place.is_some() {
+        // (`VICTORY_TILED`: the image's read-back, `crate::tiled::hand_back`.)
+        if self.place.is_some() || self.tiled.is_some() {
             return 0;
         }
         let snapshot = self.before.lock().unwrap_or_else(|e| e.into_inner());
@@ -3921,7 +3963,8 @@ impl Shadow {
         } else {
             pending.retain(|r| !ranges.contains(r));
         }
-        if !pending.is_empty() || self.card.is_some() {
+        // (`VICTORY_TILED`: no snapshot to keep or give back.)
+        if !pending.is_empty() || self.card.is_some() || self.tiled.is_some() {
             return;
         }
         if keeps() {
@@ -4001,7 +4044,8 @@ impl Shadow {
     pub(crate) fn stale_under_writes(&self, address: usize, len: usize) -> bool {
         let (start, end) = (self.start as usize, (self.start + self.len) as usize);
         let (from, to) = (address.max(start), (address + len).min(end));
-        if from >= to {
+        // (`VICTORY_TILED`: the image's merge is by chunk; nothing to settle for.)
+        if from >= to || self.tiled.is_some() {
             return false;
         }
         let busy: Vec<(usize, usize)> = self
@@ -4045,7 +4089,8 @@ impl Shadow {
     pub(crate) fn merge_under_writes(&self, address: usize, len: usize, runs_left: &mut usize) -> bool {
         let (start, end) = (self.start as usize, (self.start + self.len) as usize);
         let (from, to) = (address.max(start), (address + len).min(end));
-        if from >= to {
+        // (`VICTORY_TILED`: as above.)
+        if from >= to || self.tiled.is_some() {
             return false;
         }
         let busy: Vec<(usize, usize)> = self
@@ -4263,8 +4308,9 @@ impl Shadow {
     /// since it was last copied (all of it if the memory is not
     /// write-watched). Returns the bytes copied.
     pub(crate) fn update(&self, address: usize, len: usize) -> usize {
-        // In place: the card reads title memory itself.
-        if self.place.is_some() {
+        // In place: the card reads title memory itself. (`VICTORY_TILED`: on the image,
+        // the submission's upload does it.)
+        if self.place.is_some() || self.tiled.is_some() {
             return 0;
         }
         let (start, end) = (self.start as usize, (self.start + self.len) as usize);
@@ -4304,7 +4350,7 @@ impl Shadow {
     /// nothing, and knows it without asking anything
     /// (`crate::watch::nothing_new`). `false` if it would have to ask.
     pub(crate) fn nothing_new(&self, address: usize, len: usize) -> bool {
-        if self.place.is_some() {
+        if self.place.is_some() || self.tiled.is_some() {
             return true;
         }
         let (start, end) = (self.start as usize, (self.start + self.len) as usize);
@@ -5125,6 +5171,12 @@ impl Shadow {
     pub(crate) fn placed_copy(&self, address: usize, bytes: &[u8]) {
         let (from, to) = self.inside(address, bytes.len());
         if from >= to || self.place.is_some() {
+            return;
+        }
+        if self.tiled.is_some() {
+            // From Neptune/our fps fork (`VICTORY_TILED`): the image's chunks there count as
+            // sent (title memory holds the bytes): not sent up ahead of the list's copy.
+            crate::tiled::placed(self.start as usize + from, to - from);
             return;
         }
         let bytes = &bytes[self.start as usize + from - address..][..to - from];
@@ -5986,6 +6038,12 @@ fn lookup(address: u64, len: u64, any: bool) -> Option<Arc<Shadow>> {
         // Rounded up so that views ending in the buffer's last 256 bytes fit.
         // Shaders write some buffers (unordered access), so not upload memory.
         let size = len.next_multiple_of(1 << 16);
+        // From Neptune/our fps fork (`VICTORY_TILED`): on the tiled image, if it covers the
+        // buffer.
+        if let Some(placed) = crate::tiled::place_for(key.0, len) {
+            entry.shadow = Some(Arc::new(Shadow::tiled_image(placed, key.0, len, false)));
+            return entry.shadow.clone();
+        }
         // In place, if asked for and the memory can be opened
         // (`crate::inplace::place_for`): the buffer is the title's own
         // memory. Not the big ones `cards` puts in the card's memory: those
@@ -6344,6 +6402,16 @@ fn loose(address: u64, end: u64, unsized_ask: bool, any: bool) -> Option<Arc<Sha
     if let Some(shadow) = map.get(&(start, len)) {
         note(shadow);
         return Some(shadow.clone());
+    }
+    // From Neptune/our fps fork (`VICTORY_TILED`): on the tiled image, if it covers the
+    // window.
+    if let Some(placed) = crate::tiled::place_for(start, len) {
+        let shadow = Arc::new(Shadow::tiled_image(placed, start, len, true));
+        note(&shadow);
+        map.insert((start, len), shadow.clone());
+        WINDOWS_MADE[0].fetch_add(1, Ordering::Relaxed);
+        WINDOWS_MADE[1].fetch_add(len, Ordering::Relaxed);
+        return Some(shadow);
     }
     // In place, if asked for and the window's memory can be opened: the
     // window is the title's own memory, with nothing to copy.
