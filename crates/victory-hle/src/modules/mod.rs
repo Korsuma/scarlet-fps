@@ -18,6 +18,10 @@ pub mod display;
 pub mod dsp;
 #[cfg(windows)]
 pub mod dstorage;
+// (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) The title's FidelityFX
+// imports through ours, only with DLSS or frame generation on.
+#[cfg(windows)]
+pub mod fidelityfx;
 #[cfg(windows)]
 pub mod files;
 pub mod gameinput;

@@ -1075,6 +1075,17 @@ extern "system" fn current_reading(
     device: *const Device,
     out: Out,
 ) -> HRESULT {
+    // (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) `VICTORY_REFLEX`:
+    // the title is about to take a pad or keyboard reading. A reading that
+    // opens a simulation is where Reflex sleeps and that simulation starts
+    // with its input sample, so this comes before the reading is picked and
+    // before our lock is taken (our poll thread must not wait for the
+    // sleep). A call with nowhere to put a reading is not one. Nothing
+    // without the switch.
+    #[cfg(windows)]
+    if !out.is_null() {
+        victory_gpu::streamline::input_sampling();
+    }
     let hub = hub(this);
     let state = hub.state();
     let newest = |i: usize| {

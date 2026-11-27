@@ -169,6 +169,44 @@ fn with_state(this: This, f: impl FnOnce(&crate::host::HostList, &mut crate::dra
     }
 }
 
+/// (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) Host work recorded
+/// into a title list in place of a console one (DLSS at the title's
+/// upscaling, `crate::streamline`): whether it recorded anything (the draw
+/// state is then set again on the list before the title's next draw).
+#[cfg(windows)]
+pub(crate) type External = Box<dyn FnOnce(&crate::host::HostList) -> bool + Send>;
+
+/// Runs `work` where the title's list `this` is now: at once, or with
+/// `VICTORY_THIN=1` written into the list's stream and run where it is
+/// translated, in order. Whether the list records anywhere.
+/// (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.)
+#[cfg(windows)]
+pub(crate) fn external(this: This, work: External) -> bool {
+    if this.is_null() {
+        return false;
+    }
+    let work = match thin::put_external(this, work) {
+        Ok(()) => return true,
+        Err(work) => work,
+    };
+    if host_list(this).is_none() {
+        return false;
+    }
+    run_external(this, work);
+    true
+}
+
+/// [`external`]'s work on the list that records `this`'s calls.
+/// (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.)
+#[cfg(windows)]
+fn run_external(this: This, work: External) {
+    with_state(this, |host, state| {
+        if work(host) {
+            state.replay(host);
+        }
+    });
+}
+
 /// The submission of `lists` has run: each gives its descriptor tables'
 /// slots back ([`crate::draw::State::tables_done`]). A list cut at waits
 /// keeps them: its state goes with its last part.

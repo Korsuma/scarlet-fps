@@ -18,6 +18,10 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 
+/// `--dlss`'s values, as the source's launcher has them. (Port of
+/// Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.)
+const DLSS_MODES: [&str; 5] = ["off", "dlaa", "quality", "balanced", "performance"];
+
 #[derive(Parser)]
 #[command(
     name = "victory",
@@ -142,6 +146,19 @@ enum Command {
         /// The console model the title sees (device type, memory).
         #[arg(long, value_enum, default_value_t = Console::SeriesX)]
         console: Console,
+        /// DLSS in place of the title's upscaling (needs NVIDIA's files):
+        /// off, dlaa, quality, balanced, performance. Sets `VICTORY_DLSS=1`
+        /// and `VICTORY_DLSS_MODE`. (Port of Kemerd/VIctory-NVIDIA-RT
+        /// 60368f8, GPL-3.0; off by default here.)
+        #[arg(long, default_value = "off", value_parser = DLSS_MODES)]
+        dlss: String,
+        /// DLSS frame generation on from the start: frames shown for each one
+        /// rendered, 2 to 6 (needs NVIDIA's files, an RTX 40 or later, and on
+        /// Series X `--dlss` too). Sets `VICTORY_FRAMEGEN=1` and
+        /// `VICTORY_FRAMEGEN_X`. (Port of Kemerd/VIctory-NVIDIA-RT 60368f8,
+        /// GPL-3.0; off unless given.)
+        #[arg(long, value_parser = clap::value_parser!(u32).range(2..=6))]
+        framegen: Option<u32>,
         /// Arguments for the title, after `--` (it reads the whole command
         /// line; a title that relaunches itself passes some).
         #[arg(last = true)]
@@ -222,8 +239,24 @@ fn main() -> Result<()> {
             strict,
             execute,
             console,
+            dlss,
+            framegen,
             title_args,
         } => {
+            // (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) The options
+            // are the switches the source's launcher sets; nothing is set
+            // without them (the variables may also be set by hand).
+            // SAFETY: nothing else runs yet.
+            unsafe {
+                if dlss != "off" {
+                    std::env::set_var("VICTORY_DLSS", "1");
+                    std::env::set_var("VICTORY_DLSS_MODE", &dlss);
+                }
+                if let Some(times) = framegen {
+                    std::env::set_var("VICTORY_FRAMEGEN", "1");
+                    std::env::set_var("VICTORY_FRAMEGEN_X", times.to_string());
+                }
+            }
             victory_hle::runtime::set_title_args(title_args);
             run::run(&exe, unimplemented, strict, execute, console)
         }

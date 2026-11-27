@@ -29,6 +29,10 @@ pub mod runtime;
 pub use host::HostPolicy;
 pub use registry::{HleExport, HleModule, registry};
 pub use victory_gpu::console;
+/// DLSS and frame generation (`VICTORY_DLSS`, `VICTORY_FRAMEGEN`).
+/// (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.)
+#[cfg(windows)]
+pub use victory_gpu::streamline;
 #[cfg(all(windows, feature = "diagnostics"))]
 pub use victory_gpu::replay;
 

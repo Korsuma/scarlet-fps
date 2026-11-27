@@ -469,6 +469,24 @@ const TARGETS: u64 = after(13);
 const CLEAR_RTV: u64 = after(14);
 const CLEAR_DSV: u64 = after(15);
 const COPY_TEXTURE: u64 = after(16);
+// (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) Host work recorded in
+// place of a console one (`super::external`): DLSS at the title's upscaling.
+const EXTERNAL: u64 = after(17);
+
+/// Writes `work` into the stream of the list `this` records, to run where it
+/// is translated; `Err` (the work back) when list calls are not written down.
+/// (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.)
+pub(super) fn put_external(this: This, work: super::External) -> Result<(), super::External> {
+    if !wanted() || !on() {
+        return Err(work);
+    }
+    let front = front(this);
+    if front.closed || front.recording.is_none() {
+        return Err(work);
+    }
+    front.put(EXTERNAL, &[Box::into_raw(Box::new(work)) as u64]);
+    Ok(())
+}
 
 /// The bytes of `count` things at `items` (none if null).
 fn bytes_of<'a, T>(items: *const T, count: usize) -> &'a [u8] {
@@ -697,6 +715,16 @@ fn translate(list: This, stream: &[u64], left: impl Fn() -> bool) -> (u64, bool)
             // SAFETY: a list of ours.
             let uploads = unsafe { &(*list.cast::<List>()).uploads };
             held(uploads).push(block);
+            continue;
+        }
+        // (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.)
+        if op == EXTERNAL {
+            // SAFETY: made by `put_external`, named once.
+            let work = *unsafe { Box::from_raw(w[0] as *mut super::External) };
+            // (A recording let go of drops it unrun.)
+            if !skip {
+                super::run_external(list, work);
+            }
             continue;
         }
         if skip && op != CLOSE && op != RESET {

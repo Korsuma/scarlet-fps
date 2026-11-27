@@ -4,6 +4,12 @@ use anyhow::{Context, Result};
 
 use crate::{Console, Unimplemented};
 
+// (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) The title's FidelityFX
+// upscaler path on Series X, for DLSS and frame generation.
+#[cfg(windows)]
+#[path = "upscaler_path.rs"]
+mod upscaler_path;
+
 #[cfg(any(windows, test))]
 const SKIP_CPU_CHECK_ENV: &str = "VICTORY_SKIP_CPU_CHECK";
 
@@ -53,15 +59,56 @@ pub fn run(
     // A title that relaunched itself: the old process must be gone first.
     victory_hle::modules::lifecycle::wait_for_previous();
     let cfg = victory_core::Config::load()?;
+    // (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) DLSS and frame
+    // generation (`VICTORY_DLSS`, `VICTORY_FRAMEGEN`): Streamline is loaded
+    // before anything of the title or the host GPU, and fails soft; only if
+    // it offers one of them does the title render through its FidelityFX
+    // path, which DLSS takes over (`upscaler_path::prepare_upscaler`).
+    // Without either switch nothing is loaded and nothing below changes.
+    let mut asked = victory_hle::streamline::Asked::from_env().map_err(anyhow::Error::msg)?;
+    // (Not in the source: there the launcher never asks for frame generation
+    // without DLSS. On Series X the title's own FidelityFX, which frame
+    // generation alone leaves the upscaling to, is made for the Series S
+    // sizes only, and the title fails at its first upscaling without it.)
+    if asked.framegen && !asked.dlss && matches!(console, Console::SeriesX) {
+        println!(
+            "upscaling      VICTORY_FRAMEGEN=1 on Series X needs VICTORY_DLSS=1 as well (the title's own FidelityFX takes Series S sizes only): frame generation stays off"
+        );
+        asked.framegen = false;
+    }
+    let available = victory_hle::streamline::init(&asked);
+    let upscaler = (available.dlss || available.framegen).then_some(asked.mode);
+    if asked.any() {
+        println!(
+            "upscaling      DLSS {}, frame generation {}{}",
+            if available.dlss { "on" } else if asked.dlss { "asked, not available" } else { "off" },
+            if available.framegen { "on" } else if asked.framegen { "asked, not available" } else { "off" },
+            upscaler.map(|m| format!(", scene at the {} scale ({})", m.name(), m.scale())).unwrap_or_default()
+        );
+    }
     let original = std::fs::read(exe).with_context(|| format!("reading {}", exe.display()))?;
-    let prepared = victory_loader::prepare(&original)?;
+    // (`mut` for the port above: the upscaler path is patched in.)
+    let mut prepared = victory_loader::prepare(&original)?;
     let hash = prepared.original_hash.to_hex();
     match victory_game::identify(&hash) {
         Some(build) => println!("build          {} ({hash})", build.label),
         None => println!("build          unknown ({hash})"),
     }
 
-    let images = cfg.cache_subdir("images")?;
+    // (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) The patched image
+    // goes to a folder of its own beside the stock one; without DLSS or frame
+    // generation this is the stock `images` as before.
+    let images = match upscaler.map(|mode| (mode, upscaler_path::prepare_upscaler(&mut prepared, mode))) {
+        Some((mode, Ok(()))) => {
+            println!("display        the title's output, scene at {} of it through its FidelityFX path ({})", mode.scale(), mode.name());
+            cfg.cache_subdir(&format!("images/upscaler-{}", mode.name()))?
+        }
+        Some((_, Err(e))) => {
+            println!("upscaling      the title's FidelityFX path was not patched in: {e:#}");
+            cfg.cache_subdir("images")?
+        }
+        None => cfg.cache_subdir("images")?,
+    };
     victory_hle::modules::d3d12x::use_shader_cache(cfg.cache_subdir("shaders")?);
     let image = victory_loader::load(&prepared, &images)?;
     // The program is mapped from the copy `load` wrote: the file's bytes
@@ -162,7 +209,11 @@ pub fn run(
         show(name, dll.bind_imports(&with_dlls, policy)?);
     }
     let exe_name = exe.file_name().unwrap_or_default().to_string_lossy();
-    show(&exe_name, image.bind_imports(&with_dlls, policy)?);
+    // (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) The title's
+    // FidelityFX calls go through ours when DLSS or frame generation is on
+    // (bound as before otherwise).
+    let interposed = victory_hle::modules::fidelityfx::Interpose { inner: &with_dlls };
+    show(&exe_name, image.bind_imports(&interposed, policy)?);
     if execute {
         let size = image.info().size_of_image as usize;
         // SAFETY: the image stays mapped, and nothing of it has run yet.

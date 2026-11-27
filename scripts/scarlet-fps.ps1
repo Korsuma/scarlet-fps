@@ -9,7 +9,21 @@ param(
     [switch]$RayTracing,
     [switch]$Prewarm,
     # Seconds after the start during which A is pressed by itself (0: off).
-    [int]$AutoA = 0
+    [int]$AutoA = 0,
+    # (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) DLSS frame generation: frames shown for each
+    # one rendered (2 to 6; 3 and more need an RTX 50), 0 off (the default). Needs NVIDIA's files
+    # (-StreamlineDir) and an RTX 40 or later; on another card it logs why and stays off.
+    [ValidateSet(0, 2, 3, 4, 5, 6)][int]$FrameGen = 0,
+    # DLSS in place of the title's upscaling. Unset: off, or 'quality' with -FrameGen (frame
+    # generation takes its depth and motion vectors from the upscaling; on Series X only DLSS makes one).
+    [ValidateSet('', 'off', 'dlaa', 'quality', 'balanced', 'performance')][string]$Dlss = '',
+    # NVIDIA Reflex with DLSS or frame generation (the source launcher's default: boost). Frame
+    # generation turns Reflex's low latency on by itself; 'off' leaves only that.
+    [ValidateSet('off', 'on', 'boost')][string]$Reflex = 'boost',
+    # The folder with sl.interposer.dll and the rest of NVIDIA's files (Get-NVIDIA-DLSS.cmd of the
+    # source puts them in nvidia-sdk\Streamline\bin\x64). Unset: looked for there, beside this
+    # repository and under %LOCALAPPDATA%\victory.
+    [string]$StreamlineDir = ''
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
@@ -129,6 +143,36 @@ if ($ProbeRays -and -not $RayTracing) {
 if ($RayTracing) { $set.VICTORY_BVH_BUILDER = '1' }
 if ($AutoA -gt 0) { $set.VICTORY_AUTO_A = "$AutoA" }
 
+# (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) DLSS and frame generation: the switches the
+# source launcher passes. Nothing is set (and no NVIDIA file is loaded) without -FrameGen or -Dlss.
+if ($Dlss -eq '') { $Dlss = if ($FrameGen -gt 0) { 'quality' } else { 'off' } }
+if ($FrameGen -gt 0 -or $Dlss -ne 'off') {
+    $slDirs = @($StreamlineDir, (Join-Path $root 'nvidia-sdk\Streamline\bin\x64'))
+    if ($env:LOCALAPPDATA) { $slDirs += Join-Path $env:LOCALAPPDATA 'victory\nvidia-sdk\Streamline\bin\x64' }
+    $slDirs += 'C:\dev\sdk\streamline-sdk-v2.14.16\bin\x64'
+    $slDir = $slDirs | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $_ 'sl.interposer.dll')) } | Select-Object -First 1
+    if (-not $slDir) {
+        Write-Host "NVIDIA's files (sl.interposer.dll and the rest) are not on this PC: running without DLSS and frame generation (-StreamlineDir names their folder)." -ForegroundColor Yellow
+    } else {
+        $set.VICTORY_STREAMLINE_DIR = $slDir
+        if ($Dlss -ne 'off') {
+            $set.VICTORY_DLSS = '1'
+            $set.VICTORY_DLSS_MODE = $Dlss
+        }
+        if ($FrameGen -gt 0) {
+            $set.VICTORY_FRAMEGEN = '1'
+            $set.VICTORY_FRAMEGEN_X = "$FrameGen"
+            # Frame generation takes 1.5 to 2 GB of the card's memory, which the layer otherwise
+            # fills with textures: it is left a fifth of the budget (as the source launcher does).
+            $set.VICTORY_TEXTURE_ROOM_PERCENT = '80'
+            if ($Console -eq 'series-x' -and $Dlss -eq 'off') {
+                Write-Host "Frame generation on Series X needs DLSS (-Dlss quality or another mode): it stays off." -ForegroundColor Yellow
+            }
+        }
+        if ($Reflex -ne 'off') { $set.VICTORY_REFLEX = $Reflex }
+    }
+}
+
 foreach ($k in $set.Keys) { Set-Item -Path "Env:$k" -Value $set[$k] }
 
 if ($Prewarm) {
@@ -143,6 +187,10 @@ $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $logPath = Join-Path $runsDir "3070-$stamp.log"
 
 Write-Host "=== victory-scarlett RTX 3070 8GB (release, $Console, MipDrop=$MipDrop, PagePool=1) ===" -ForegroundColor Green
+if ($set.Contains('VICTORY_STREAMLINE_DIR')) {
+    # (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.)
+    Write-Host "DLSS $Dlss, frame generation $(if ($FrameGen -gt 0) { "${FrameGen}x" } else { 'off' }), Reflex $Reflex (NVIDIA's files: $($set.VICTORY_STREAMLINE_DIR))"
+}
 Write-Host "Log: $logPath"
 $ErrorActionPreference = 'Continue'
 & $exe run $Game --execute --console $Console 2>&1 | Tee-Object -FilePath $logPath

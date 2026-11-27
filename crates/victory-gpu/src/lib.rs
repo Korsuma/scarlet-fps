@@ -34,6 +34,10 @@ pub mod device;
 #[cfg(windows)]
 mod draw;
 pub mod dxgi;
+// (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) Host work recorded in
+// place of a console one (DLSS at the title's upscaling).
+#[cfg(windows)]
+mod external;
 pub mod fence;
 pub mod frame;
 pub mod chunks; // (fox port A) F21 arena chunk meter (VICTORY_CHUNK_METER)
@@ -100,6 +104,11 @@ mod tiles;
 #[cfg(windows)]
 pub mod tiled;
 pub mod signature;
+// (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) DLSS Frame Generation,
+// Reflex and DLSS Super Resolution through NVIDIA Streamline, loaded at run
+// time; off unless `VICTORY_FRAMEGEN=1` or `VICTORY_DLSS=1`.
+#[cfg(windows)]
+pub mod streamline;
 mod switch;
 #[cfg(all(windows, feature = "diagnostics"))]
 mod ab;

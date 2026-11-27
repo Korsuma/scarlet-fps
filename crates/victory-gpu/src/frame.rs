@@ -205,6 +205,17 @@ pub(crate) extern "system" fn wait(
     if origin && (hr == S_OK || flags & TOKEN_ON_TIMEOUT != 0) {
         // Tokens count frames (consecutive), not ticks.
         let frame = FRAME.fetch_add(1, Ordering::Relaxed) + 1;
+        // (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.)
+        // `VICTORY_REFLEX`: the frame's Reflex index is settled here
+        // (nothing without the switch). This wait is the title's own start
+        // of a frame, and the token it makes is the frame's name: the title
+        // hands it back with the frame's submissions and its present. The
+        // Reflex sleep is usually at the reading that opens a simulation
+        // (`streamline::input_sampling`); only for a frame with no
+        // simulation to take is it made here, on the title's thread with no
+        // lock of ours held.
+        #[cfg(windows)]
+        crate::streamline::frame_begins(frame);
         pace::begun();
         if !token.is_null() {
             // SAFETY: checked non-null; the title passes its token.
