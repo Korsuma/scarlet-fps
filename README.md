@@ -61,6 +61,28 @@ Add these to the start command.
 | `-Prewarm` | Translates all shaders before the first start instead of while playing. |
 | `-AutoA 200` | Presses A through the start screens for that many seconds. |
 
+### Frame generation and DLSS (NVIDIA, off by default)
+
+From [Kemerd/VIctory-NVIDIA-RT](https://github.com/Kemerd/VIctory-NVIDIA-RT), through NVIDIA Streamline. Nothing changes
+unless one of these is given.
+
+| Option | What it does |
+|---|---|
+| `-FrameGen 2` | DLSS Frame Generation: frames shown for each one rendered, `2` to `6` (`3` and more need an RTX 50). Needs an RTX 40 or later; on another card it logs why and stays off. Turns on `-Dlss quality` unless `-Dlss` is given. |
+| `-Dlss quality` | DLSS in place of the title's own upscaling: `off`, `dlaa`, `quality`, `balanced` or `performance`. Works on RTX 20 and later. In Series X mode frame generation needs it. |
+| `-Reflex boost` | NVIDIA Reflex with DLSS or frame generation: `off`, `on` or `boost` (the default). |
+| `-StreamlineDir <folder>` | The folder with NVIDIA's Streamline files. Unset: looked for in `nvidia-sdk\Streamline\bin\x64` beside this repository, then under `%LOCALAPPDATA%\victory`. |
+
+NVIDIA's files are not part of this repository. Get the Streamline SDK v2.14.16 from NVIDIA and point
+`-StreamlineDir` at its `bin\x64` folder (`sl.interposer.dll`, `sl.common.dll`, `sl.dlss.dll`, `sl.dlss_g.dll`,
+`sl.reflex.dll`, `sl.pcl.dll`, `nvngx_dlss.dll`, `nvngx_dlssg.dll`). Without them the build starts as before and says
+so in its log.
+
+Example, Series X with frame generation:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\scarlet-fps.ps1 -Game "C:\path\to\your-game.exe" -Console series-x -FrameGen 2 -StreamlineDir "C:\path\to\streamline\bin\x64"
+```
+
 ## What is different from the 3070 fork
 
 Code:
@@ -92,7 +114,8 @@ Scarlet-FPS is built on the work of
 [Marvisak/VIctory](https://github.com/Marvisak/VIctory),
 [fxceless/victory-fork](https://github.com/fxceless/victory-fork),
 [Op-lite/victory-scarlett](https://github.com/Op-lite/victory-scarlett),
-[Yaekai/victory-scarlett-3070](https://github.com/Yaekai/victory-scarlett-3070) and
-[trustno1-coder/VIctory-NVIDIA](https://github.com/trustno1-coder/VIctory-NVIDIA).
+[Yaekai/victory-scarlett-3070](https://github.com/Yaekai/victory-scarlett-3070),
+[trustno1-coder/VIctory-NVIDIA](https://github.com/trustno1-coder/VIctory-NVIDIA) and
+[Kemerd/VIctory-NVIDIA-RT](https://github.com/Kemerd/VIctory-NVIDIA-RT) (frame generation, DLSS and Reflex).
 
 Licensed GPL-3.0-or-later, as they are.
