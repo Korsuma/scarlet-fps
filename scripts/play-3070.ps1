@@ -124,6 +124,7 @@ if ($ProbeRays -and -not $RayTracing) {
 } elseif (-not $RayTracing) {
     $set.VICTORY_AMBIENT = '0.8'
     $set.VICTORY_AMBIENT_AIR = '1.5'
+    $set.VICTORY_AMBIENT_SPECULAR = '1'   # reflections stand-in (from trustno1-coder/VIctory-NVIDIA)
 }
 if ($RayTracing) { $set.VICTORY_BVH_BUILDER = '1' }
 if ($AutoA -gt 0) { $set.VICTORY_AUTO_A = "$AutoA" }

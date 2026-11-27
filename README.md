@@ -18,6 +18,10 @@ Code:
   such (`VICTORY_VIEW_KNOWN`), guards made read-only several runs at a call (`VICTORY_ARM_SPAN`): all off unless set.
 - Window title says `COMPILING SHADERS (n left)` while pipelines are being made and `WARMED UP` once none are.
 - `-AutoA <seconds>` on the launcher (`VICTORY_AUTO_A`): presses A through the start screens.
+- From [trustno1-coder/VIctory-NVIDIA](https://github.com/trustno1-coder/VIctory-NVIDIA) (GPL-3.0): its newer lighting
+  stand-in (keeps the title's own light where it is brighter; `VICTORY_AMBIENT_ONCE`), the reflections stand-in
+  (`VICTORY_AMBIENT_SPECULAR`, on in the launcher) and the BC7 rotation fix in the texture decoder.
+  `VICTORY_AMBIENT_LEFTOVER=0` gives the 3070 fork's lighting line back (if skin turns magenta).
 
 Launcher defaults changed in `scripts\play-3070.ps1`:
 - `VICTORY_REFRESH_ONCE=0` (with 1: stretched meshes and corrupted posters).
