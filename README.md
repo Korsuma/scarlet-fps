@@ -41,7 +41,7 @@ the Visual Studio C++ Build Tools (with the Windows SDK).
    ```
 2. Start the game:
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\scripts\play-3070.ps1 -Game "C:\path\to\game_scarlett_master.exe"
+   powershell -ExecutionPolicy Bypass -File .\scripts\scarlet-fps.ps1 -Game "C:\path\to\game_scarlett_master.exe"
    ```
 
 The window title shows `COMPILING SHADERS (n left)` while shaders are being prepared and `WARMED UP` when they
@@ -72,7 +72,7 @@ Code:
 - More switches that are off unless set: `VICTORY_TILED`, `VICTORY_ASK_QUIET`, `VICTORY_VIEW_KNOWN`,
   `VICTORY_ARM_SPAN`, `VICTORY_AMBIENT_ONCE`, `VICTORY_AMBIENT_LEFTOVER`.
 
-Launcher defaults (`scripts\play-3070.ps1`):
+Launcher defaults (`scripts\scarlet-fps.ps1`):
 - `VICTORY_REFRESH_ONCE=0`: with 1, stretched meshes and corrupted posters.
 - The water's two tiled light programs are left out (`5dc3b25986622949`, `6f225b641c5b0708`): on NVIDIA cards
   they leave dark tiles and black foam on open water. The water is a little darker and bluer without them.
