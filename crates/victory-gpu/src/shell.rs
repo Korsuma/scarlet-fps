@@ -444,8 +444,8 @@ mod tests {
     #[test]
     fn the_caption_says_frame_rate_and_time_per_frame() {
         assert_eq!(
-            caption("Grand Theft Auto VI", 8.9, 4225.4),
-            "Scarlet-FPS | Grand Theft Auto VI | 8.9 FPS | 112.4 ms | 4225 draws"
+            caption("Example Game", 8.9, 4225.4),
+            "Scarlet-FPS | Example Game | 8.9 FPS | 112.4 ms | 4225 draws"
         );
         assert_eq!(
             caption("Americas", 25.0, 10.0),
@@ -472,12 +472,12 @@ mod tests {
     fn the_manifest_names_the_game_and_its_logos() {
         let text = "\u{feff}<?xml version=\"1.0\"?>\n<Game configVersion=\"1\">\n\
             <!-- <ShellVisuals DefaultDisplayName=\"Old\" /> -->\n\
-            <ShellVisuals DefaultDisplayName=\"Grand Theft Auto VI\" \
-            PublisherDisplayName=\"Rockstar Games\" Square150x150Logo=\"xbs_logo_150.png\" \
+            <ShellVisuals DefaultDisplayName=\"Example Game\" \
+            PublisherDisplayName=\"Example Publisher\" Square150x150Logo=\"xbs_logo_150.png\" \
             Square44x44Logo='xbs_logo_44.png' Description=\"A &amp; B\" StoreLogo=\"\" />\n</Game>";
         assert_eq!(
             display_name_in(text).as_deref(),
-            Some("Grand Theft Auto VI")
+            Some("Example Game")
         );
         assert_eq!(
             shell_visual(text, "Square44x44Logo").as_deref(),
@@ -489,10 +489,10 @@ mod tests {
         assert_eq!(shell_visual(text, "Square480x480Logo"), None, "absent");
         let renamed = text.replace(
             "<ShellVisuals ",
-            "<ShellVisuals OverrideDisplayName=\"GTA VI\" ",
+            "<ShellVisuals OverrideDisplayName=\"Example\" ",
         );
-        assert_eq!(display_name_in(&renamed).as_deref(), Some("GTA VI"));
-        let resource = text.replace("Grand Theft Auto VI", "ms-resource:Name");
+        assert_eq!(display_name_in(&renamed).as_deref(), Some("Example"));
+        let resource = text.replace("Example Game", "ms-resource:Name");
         assert_eq!(display_name_in(&resource), None);
         // UTF-16 with its mark, as some manifests are saved.
         let wide: Vec<u8> = [0xff, 0xfe]
@@ -505,7 +505,7 @@ mod tests {
             .collect();
         assert_eq!(
             display_name_in(&decode(&wide)).as_deref(),
-            Some("Grand Theft Auto VI")
+            Some("Example Game")
         );
     }
 

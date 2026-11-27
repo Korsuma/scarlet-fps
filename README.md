@@ -41,7 +41,7 @@ the Visual Studio C++ Build Tools (with the Windows SDK).
    ```
 2. Start the game:
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\scripts\scarlet-fps.ps1 -Game "C:\path\to\game_scarlett_master.exe"
+   powershell -ExecutionPolicy Bypass -File .\scripts\scarlet-fps.ps1 -Game "C:\path\to\your-game.exe"
    ```
 
 The window title shows `COMPILING SHADERS (n left)` while shaders are being prepared and `WARMED UP` when they
@@ -95,5 +95,4 @@ Scarlet-FPS is built on the work of
 [Yaekai/victory-scarlett-3070](https://github.com/Yaekai/victory-scarlett-3070) and
 [trustno1-coder/VIctory-NVIDIA](https://github.com/trustno1-coder/VIctory-NVIDIA).
 
-Licensed GPL-3.0-or-later, as they are. The 3070 fork's full README, with the details of the base, is in
-[docs/README-3070-fork.md](docs/README-3070-fork.md).
+Licensed GPL-3.0-or-later, as they are.
