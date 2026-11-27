@@ -125,7 +125,6 @@ if ($ProbeRays -and -not $RayTracing) {
     $set.VICTORY_AMBIENT = '0.8'
     $set.VICTORY_AMBIENT_AIR = '1.5'
     $set.VICTORY_AMBIENT_SPECULAR = '1'   # reflections stand-in (from trustno1-coder/VIctory-NVIDIA)
-    $set.VICTORY_AMBIENT_FLOOR = '0.05'   # least indirect light (rooms, deep shade, nights)
 }
 if ($RayTracing) { $set.VICTORY_BVH_BUILDER = '1' }
 if ($AutoA -gt 0) { $set.VICTORY_AUTO_A = "$AutoA" }
