@@ -12,6 +12,9 @@ param(
     [switch]$ProbeRays,
     [switch]$RayTracing,
     [switch]$Prewarm,
+    # Leave the title's saved settings alone. Unset: the screen size the title saved (settings.xml,
+    # resolutionFullscreen) is set to the size drawn for, so the interface is laid out for it.
+    [switch]$KeepSettings,
     # Seconds after the start during which A is pressed by itself (0: off).
     [int]$AutoA = 0,
     # (Port of Kemerd/VIctory-NVIDIA-RT 60368f8, GPL-3.0.) DLSS frame generation: frames shown for each
@@ -187,6 +190,35 @@ if ($display) {
     # own modes take.
     if ($display -in '1280x720', '1664x936', '1920x1080', '2560x1440', '3840x2160') { $set.VICTORY_OUTPUT = $display }
     else { Write-Host "-Res $display is not one of the title's own sizes: only the display mode is changed" -ForegroundColor Yellow }
+}
+# The title lays its interface out for the screen size it saved in its settings (settings.xml,
+# resolutionFullscreen), not for the size it draws: saved at 4K by a first run, the interface comes out
+# twice as big at 1920x1080. That saved size is set to the size drawn for (the console's 4K without one);
+# the file is kept once as settings.xml.bak first. -KeepSettings leaves it alone.
+if (-not $KeepSettings) {
+    $want = if ($set.Contains('VICTORY_OUTPUT')) { $set.VICTORY_OUTPUT } else { '3840x2160' }
+    $w, $h = $want -split 'x'
+    $dataDir = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA 'victory\data' } else { '' }
+    if ($dataDir -and (Test-Path -LiteralPath $dataDir)) {
+        foreach ($titleDir in Get-ChildItem -LiteralPath $dataDir -Directory) {
+            $xml = Join-Path $titleDir.FullName 'storage\settings\settings.xml'
+            if (-not (Test-Path -LiteralPath $xml)) { continue }
+            try {
+                $text = [System.IO.File]::ReadAllText($xml)
+                $re = [regex]'(<resolutionFullscreen>\s*<width value=")(\d+)(" />\s*<height value=")(\d+)'
+                $m = $re.Match($text)
+                if (-not $m.Success -or ($m.Groups[2].Value -eq $w -and $m.Groups[4].Value -eq $h)) { continue }
+                $bak = "$xml.bak"
+                if (-not (Test-Path -LiteralPath $bak)) { Copy-Item -LiteralPath $xml -Destination $bak }
+                $new = $text.Substring(0, $m.Index) + $m.Groups[1].Value + $w + $m.Groups[3].Value + $h +
+                    $text.Substring($m.Index + $m.Length)
+                [System.IO.File]::WriteAllText($xml, $new, (New-Object System.Text.UTF8Encoding($false)))
+                Write-Host "Saved screen size $($m.Groups[2].Value)x$($m.Groups[4].Value) -> $want in $xml (-KeepSettings: leave it)"
+            } catch {
+                Write-Host "Could not set the saved screen size in ${xml}: $($_.Exception.Message)" -ForegroundColor Yellow
+            }
+        }
+    }
 }
 if ($RayTracing) { $set.VICTORY_BVH_BUILDER = '1' }
 if ($AutoA -gt 0) { $set.VICTORY_AUTO_A = "$AutoA" }
