@@ -216,7 +216,7 @@ fn shade() -> [f32; 2] {
 /// - `0`: not kept, only the estimate (the 3070 fork's line).
 /// - `1`: kept by its brightness alone (VIctory-NVIDIA's line).
 fn source() -> String {
-    const HUE: &str = "    float3 hue_was = was / max(dot(was, LUMA), 1e-6);\n    float3 hue_now = found / max(dot(found, LUMA), 1e-6);\n    was *= saturate((2.0 - length(hue_was - hue_now)) / 0.8);\n";
+    const HUE: &str = "    float3 hue_was = was / max(dot(was, LUMA), 1e-6);\n    float3 hue_now = found / max(dot(found, LUMA), 1e-6);\n    was *= saturate((1.6 - length(hue_was - hue_now)) / 0.6);\n";
     let text = match std::env::var("VICTORY_AMBIENT_LEFTOVER").as_deref().map(str::trim) {
         Ok("0") => SOURCE.replace(HUE, "").replace("float3 was = unpack(light[p]);", "float3 was = float3(0.0, 0.0, 0.0);"),
         Ok("1") => SOURCE.replace(HUE, ""),
@@ -501,7 +501,7 @@ void raise(uint3 at : SV_DispatchThreadID) {
     was *= min(1.0, top / max(has, 1e-6));
     float3 hue_was = was / max(dot(was, LUMA), 1e-6);
     float3 hue_now = found / max(dot(found, LUMA), 1e-6);
-    was *= saturate((2.0 - length(hue_was - hue_now)) / 0.8);
+    was *= saturate((1.6 - length(hue_was - hue_now)) / 0.6);
     float3 now = max(was, found);
     light[p] = pack(now);
     if (once > 0.0) {
