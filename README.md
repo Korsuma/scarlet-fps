@@ -1,5 +1,8 @@
 # Scarlet-FPS
 
+**Runs the title in Xbox Series S mode by default and works in Xbox Series X mode too. With a better GPU, use
+Series X (`-Console series-x`) for the better picture.**
+
 A build of the VIctory layer for running your own Xbox Series dump of the title on a Windows PC with an NVIDIA
 card. Its aim is to be the most stable public build with the highest frame rate.
 
